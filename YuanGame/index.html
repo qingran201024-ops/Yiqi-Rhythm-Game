@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>袁一琦 Rhythm Master</title>
+    <style>
+        /* --- 基础重置 --- */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { 
+            margin: 0; overflow: hidden; background-color: #000; 
+            font-family: 'Arial Black', sans-serif; 
+            user-select: none; -webkit-user-select: none; touch-action: none; 
+        }
+        canvas { display: block; margin: 0 auto; background-color: #111; }
+
+        /* --- 竖屏菜单 --- */
+        #song-menu { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: radial-gradient(circle at center, #2b2b2b 0%, #000 100%); 
+            display: flex; flex-direction: column; align-items: center; 
+            z-index: 200; color: white; padding-top: 40px;
+        }
+
+        h1 { 
+            font-size: 32px; text-align: center;
+            background: linear-gradient(to right, #FF69B4, #00BFFF); 
+            -webkit-background-clip: text; color: transparent; 
+            margin-bottom: 20px; letter-spacing: 1px;
+            text-shadow: 0 0 20px rgba(255,105,180,0.5);
+        }
+        
+        .song-list { width: 90%; flex: 1; overflow-y: auto; padding-bottom: 40px; }
+        
+        .song-card { 
+            background: rgba(255,255,255,0.08); 
+            border-left: 6px solid #FF69B4; 
+            margin-bottom: 15px; padding: 20px; 
+            border-radius: 10px; display: flex; justify-content: space-between; align-items: center; 
+            cursor: pointer; transition: 0.2s;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .song-card:active { transform: scale(0.96); background: rgba(255,255,255,0.15); }
+        .song-title { font-size: 18px; color: white; margin-bottom: 5px;}
+        .song-meta { font-size: 12px; color: #888; }
+        
+        /* --- 提示与覆盖层 --- */
+        #orientation-lock, #start-overlay, #loading-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 300;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            color: white; backdrop-filter: blur(10px);
+        }
+        #orientation-lock svg { width: 60px; fill: #FF69B4; animation: rotate 2s infinite; }
+
+        .big-btn { 
+            padding: 15px 50px; font-size: 24px; color: white; 
+            background: linear-gradient(90deg, #FF69B4, #00BFFF);
+            border: none; border-radius: 50px; 
+            box-shadow: 0 0 25px rgba(255,105,180,0.6);
+            margin-top: 20px; animation: pulse 1.5s infinite; cursor: pointer; 
+        }
+
+        /* --- 游戏UI --- */
+        #pause-btn { position: absolute; top: 20px; left: 20px; width: 50px; height: 50px; background: rgba(0,0,0,0.5); border: 2px solid rgba(255,255,255,0.3); border-radius: 12px; z-index: 80; display: none; justify-content: center; align-items: center; cursor: pointer;}
+        #pause-btn svg { width: 24px; fill: white; }
+        
+        .overlay-screen { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 99; flex-direction: column; justify-content: center; align-items: center; }
+        .icon-row { display: flex; gap: 40px; margin-top: 40px; }
+        .icon-btn { width: 80px; height: 80px; border-radius: 50%; border: 3px solid white; background: rgba(255,255,255,0.1); display: flex; justify-content: center; align-items: center; cursor: pointer; transition: 0.1s;}
+        .icon-btn svg { width: 36px; fill: white; }
+        
+        .copyright { margin-top: 20px; font-size: 12px; color: #666; text-align: center; width: 100%; padding: 20px;}
+
+        @keyframes pulse { 0% {transform:scale(1)} 50% {transform:scale(1.05)} 100% {transform:scale(1)} }
+        @keyframes rotate { 0% {transform: rotate(0deg)} 25% {transform: rotate(-90deg)} 50% {transform: rotate(-90deg)} 100% {transform: rotate(0deg)} }
+    </style>
+</head>
+<body>
+
+<!-- 竖屏菜单 -->
+<div id="song-menu">
+    <h1>Rhythm Master<br>Yiqi Version</h1>
+    <div class="song-list" id="song-list-container"></div>
+    <div class="copyright">音频版权归袁一琦及丝芭传媒所有<br>粉丝自制 仅供娱乐</div>
+</div>
+
+<!-- 提示层 -->
+<div id="orientation-lock">
+    <svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+    <h2 style="margin-top:20px;">请横屏手机</h2>
+</div>
+
+<div id="start-overlay">
+    <div style="font-size:40px; font-weight:900; font-style:italic; text-shadow:0 0 10px #fff">READY</div>
+    <div class="big-btn" onclick="initAudioAndPlay()">START</div>
+</div>
+
+<div id="loading-screen"><h2>LOADING...</h2></div>
+
+<!-- 暂停与结算 -->
+<div id="pause-btn" onclick="pauseGame()"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></div>
+
+<div id="pause-menu" class="overlay-screen">
+    <h2 style="color:white; font-size:30px; letter-spacing:5px;">PAUSED</h2>
+    <div class="icon-row">
+        <div class="icon-btn" onclick="exitToMenu()" style="border-color:#ff6b6b"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div>
+        <div class="icon-btn" onclick="retryGame()" style="border-color:#feca57"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></div>
+        <div class="icon-btn" onclick="resumeGame()" style="border-color:#1dd1a1"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+    </div>
+</div>
+
+<div id="result-screen" class="overlay-screen">
+    <div style="color:#aaa; font-size:14px;">SCORE</div>
+    <div id="final-score" style="font-size:60px; color:white; font-weight:bold; font-family:monospace">000000</div>
+    <div id="rank-text" style="font-size:100px; font-weight:900; color:#87CEEB; margin:10px 0; text-shadow: 0 0 20px #00BFFF;">S</div>
+    <div class="icon-row">
+        <div class="icon-btn" onclick="exitToMenu()" style="border-color:#aaa"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div>
+        <div class="icon-btn" onclick="retryGame()" style="border-color:#fff"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></div>
+    </div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script src="./data.js"></script>
+
+<script>
+    // --- 配置 ---
+    const SONG_LIBRARY = [
+        { id: 'yqy_u', title: 'Gummy', artist: '袁一琦', file: './music.mp3', bg: './bg.jpg', chart: (window.CHART_GUMMY && window.CHART_GUMMY.length>0)?window.CHART_GUMMY:[] }, 
+        { id: 'live_longer', title: '我们要活得比世界更久一点', artist: '袁一琦', file: './music2.mp3', bg: './bg.jpg', chart: (window.CHART_LIVE && window.CHART_LIVE.length>0)?window.CHART_LIVE:[] },
+        { id: 'wind_direction', title: '风向', artist: '袁一琦', file: './music3.mp3', bg: './bg.jpg', chart: (window.CHART_WIND && window.CHART_WIND.length>0)?window.CHART_WIND:[] }
+    ];
+
+    const GAME_CONFIG = { 
+        speed: 1600, // 下落速度ms
+        colors: ['#FF69B4', '#00BFFF', '#00BFFF', '#FF69B4']
+    };
+
+    // --- 引擎 ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false }); 
+    
+    let audioCtx, audioBuffer, musicSource;
+    let currentSong = null;
+    let gameState = 'menu'; 
+    let startTime = 0;
+    
+    let lanes = [[], [], [], []];
+    let lanePress = [0, 0, 0, 0]; 
+    let particles = [];
+    let judgeAnim = { text: "", color: "#FFF", life: 0, scale: 1 }; // 恢复判定动画
+    let rawScore = 0, combo = 0;
+    let bgImg = new Image();
+    let noteIndex = 0; 
+    let pendingSongIndex = 0;
+
+    function checkOrientation() {
+        const lock = document.getElementById('orientation-lock');
+        if (gameState === 'playing' || gameState === 'waiting_rotate' || gameState === 'paused') {
+            if (window.innerHeight > window.innerWidth) {
+                lock.style.display = 'flex';
+                if (gameState === 'playing' && audioCtx && audioCtx.state === 'running') audioCtx.suspend();
+            } else {
+                lock.style.display = 'none';
+                if (gameState === 'waiting_rotate') { initAudioAndPlay(); }
+                else if (gameState === 'playing' && audioCtx && audioCtx.state === 'suspended') { audioCtx.resume(); }
+            }
+        } else {
+            lock.style.display = 'none';
+        }
+        resize();
+    }
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 200));
+    resize();
+
+    window.onload = renderSongList;
+
+    function renderSongList() {
+        const list = document.getElementById('song-list-container');
+        list.innerHTML = "";
+        SONG_LIBRARY.forEach((song, index) => {
+            const hasChart = song.chart.length > 0;
+            const card = document.createElement('div');
+            card.className = 'song-card';
+            card.innerHTML = `
+                <div><div class="song-title">${song.title}</div><div class="song-meta">${song.artist}</div></div>
+                <div style="color:${hasChart?'#00BFFF':'#555'}; font-weight:bold;">${hasChart ? 'START' : 'NO DATA'}</div>
+            `;
+            card.onclick = () => prepareGame(index);
+            list.appendChild(card);
+        });
+    }
+
+    function prepareGame(index) {
+        const song = SONG_LIBRARY[index];
+        if (song.chart.length === 0) { alert("暂无谱面数据"); return; }
+        pendingSongIndex = index;
+        currentSong = song;
+        document.getElementById('song-menu').style.display = 'none';
+        if (window.innerHeight > window.innerWidth) {
+            gameState = 'waiting_rotate';
+            checkOrientation();
+        } else {
+            document.getElementById('start-overlay').style.display = 'flex';
+        }
+    }
+
+    async function initAudioAndPlay() {
+        gameState = 'playing';
+        document.getElementById('start-overlay').style.display = 'none';
+        document.getElementById('loading-screen').style.display = 'flex';
+        document.getElementById('orientation-lock').style.display = 'none';
+
+        try {
+            window.AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!audioCtx) audioCtx = new AudioContext();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            if (musicSource) { try{ musicSource.stop(); }catch(e){} musicSource = null; }
+
+            const res = await fetch(currentSong.file);
+            if (!res.ok) throw new Error("File not found");
+            const buf = await res.arrayBuffer();
+            audioBuffer = await audioCtx.decodeAudioData(buf);
+            bgImg.src = currentSong.bg;
+
+            resetGame();
+            document.getElementById('loading-screen').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'flex';
+            
+            setTimeout(() => {
+                musicSource = audioCtx.createBufferSource();
+                musicSource.buffer = audioBuffer;
+                musicSource.connect(audioCtx.destination);
+                musicSource.onended = () => { if (gameState === 'playing') finishGame(); };
+                startTime = audioCtx.currentTime + 0.1;
+                musicSource.start(startTime);
+                requestAnimationFrame(loop);
+            }, 100);
+
+        } catch(e) {
+            alert("加载错误: " + e.message);
+            location.reload();
+        }
+    }
+
+    function resetGame() {
+        rawScore = 0; combo = 0;
+        lanes = [[],[],[],[]];
+        lanePress = [0,0,0,0];
+        particles = [];
+        noteIndex = 0;
+        judgeAnim.life = 0;
+    }
+
+    function loop() {
+        if (gameState !== 'playing') return;
+        const curTime = audioCtx.currentTime;
+        const songTime = curTime - startTime;
+        
+        if (currentSong.chart) {
+            while (noteIndex < currentSong.chart.length) {
+                const n = currentSong.chart[noteIndex];
+                if (n.time <= songTime + 2.0) {
+                    lanes[n.lane].push({
+                        type: n.type,
+                        targetTime: startTime + n.time,
+                        endTime: startTime + n.time + (n.dur || 0),
+                        isHit: false, isMiss: false, isHolding: false
+                    });
+                    noteIndex++;
+                } else { break; }
+            }
+        }
+
+        updateEntities(curTime);
+        drawScene(curTime);
+        requestAnimationFrame(loop);
+    }
+
+    function updateEntities(curTime) {
+        lanes.forEach((lane, i) => {
+            if (lanePress[i] > 0) lanePress[i] -= 0.1;
+            for (let j = lane.length - 1; j >= 0; j--) {
+                let n = lane[j];
+                
+                if (n.type === 'long' && n.isHolding) {
+                    if (Math.random() > 0.6) spawnParticle(i, true);
+                    if (curTime >= n.endTime) { 
+                        n.isHit = true; rawScore += 100; 
+                        triggerJudge("PERFECT", "#FFD700"); // 长按结束也给判定
+                    }
+                }
+
+                let missT = n.targetTime + 0.2;
+                if (n.type === 'long' && n.isHolding) missT = Infinity;
+                
+                if (!n.isHit && !n.isMiss && curTime > missT) {
+                    n.isMiss = true; combo = 0; 
+                    triggerJudge("MISS", "#ff4d4d");
+                }
+
+                let deadT = (n.type==='long' ? n.endTime : n.targetTime) + 0.5;
+                if ((n.isHit && n.type==='short') || (n.isHit && n.type==='long' && curTime > n.endTime) || curTime > deadT) {
+                    lane.splice(j, 1);
+                }
+            }
+        });
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx; p.y += p.vy; p.life -= 0.05;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+        
+        if (judgeAnim.life > 0) {
+            judgeAnim.life -= 0.05; judgeAnim.scale += 0.02;
+        }
+    }
+
+    function drawScene(curTime) {
+        const w = canvas.width, h = canvas.height;
+        const jy = h * 0.85; 
+        const speedMs = GAME_CONFIG.speed / 1000;
+
+        // 清屏 & 背景
+        ctx.fillStyle = "#000"; ctx.fillRect(0,0,w,h);
+        if (bgImg.complete) {
+            ctx.globalAlpha = 0.3;
+            const s = Math.max(w/bgImg.width, h/bgImg.height);
+            ctx.drawImage(bgImg, (w-bgImg.width*s)/2, (h-bgImg.height*s)/2, bgImg.width*s, bgImg.height*s);
+            ctx.globalAlpha = 1.0;
+        }
+
+        // 轨道参数
+        const trackW = w * 0.85; // 稍微加宽
+        const trackX = (w - trackW) / 2;
+        const colW = trackW / 4;
+
+        // 判定线底座
+        ctx.fillStyle = "rgba(255,255,255,0.1)";
+        ctx.fillRect(trackX, 0, trackW, h);
+        
+        // 绘制判定区发光底板
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(trackX, jy - 40, trackW, 80);
+        ctx.fillStyle = "white"; 
+        ctx.fillRect(trackX, jy - 2, trackW, 4); // 白线
+
+        // 轨道分割线
+        ctx.strokeStyle = "rgba(255,255,255,0.1)"; ctx.lineWidth = 2;
+        for(let i=0; i<=4; i++) {
+            ctx.beginPath(); ctx.moveTo(trackX+i*colW, 0); ctx.lineTo(trackX+i*colW, h); ctx.stroke();
+        }
+
+        // 判定框
+        for(let i=0; i<4; i++) {
+            const bx = trackX + i*colW;
+            if (lanePress[i] > 0.1) {
+                // 按下高亮：镭射光束
+                const g = ctx.createLinearGradient(0, jy, 0, 0);
+                g.addColorStop(0, GAME_CONFIG.colors[i]);
+                g.addColorStop(1, "transparent");
+                ctx.globalAlpha = lanePress[i] * 0.6;
+                ctx.fillStyle = g; ctx.fillRect(bx, 0, colW, h);
+                ctx.globalAlpha = 1.0;
+                // 边框高亮
+                ctx.strokeStyle = GAME_CONFIG.colors[i]; ctx.lineWidth = 4;
+                ctx.strokeRect(bx+2, jy-40, colW-4, 80);
+            } else {
+                ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 2;
+                ctx.strokeRect(bx+5, jy-40, colW-10, 80);
+            }
+        }
+
+        // 音符绘制 (恢复高级感)
+        lanes.forEach((l, i) => {
+            const col = GAME_CONFIG.colors[i];
+            const lx = trackX + i*colW;
+            const noteW = colW - 10; 
+
+            l.forEach(n => {
+                const timeDiff = n.targetTime - curTime;
+                let y = jy - (timeDiff / speedMs) * jy;
+                
+                if (n.type === 'short') {
+                    if (!n.isHit) {
+                        // 霓虹光晕
+                        ctx.shadowBlur = 15; ctx.shadowColor = col;
+                        ctx.fillStyle = "#fff"; // 白色核心
+                        ctx.fillRect(lx+5, y-15, noteW, 30);
+                        
+                        // 彩色外壳
+                        ctx.shadowBlur = 0;
+                        ctx.fillStyle = col; 
+                        ctx.fillRect(lx+5, y-15, noteW, 6); // 顶部装饰
+                        ctx.fillRect(lx+5, y+9, noteW, 6); // 底部装饰
+                    }
+                } else {
+                    // 长条
+                    const tailDiff = n.endTime - curTime;
+                    let yTail = jy - (tailDiff / speedMs) * jy;
+                    
+                    if (n.isHolding) y = jy; 
+
+                    if (yTail < h && y > 0) {
+                        // 身体：半透明渐变
+                        ctx.globalAlpha = 0.7; ctx.fillStyle = col;
+                        ctx.fillRect(lx + 12, yTail, noteW - 14, Math.max(0, y - yTail));
+                        ctx.globalAlpha = 1.0;
+                        
+                        // 芯子
+                        ctx.fillStyle = "rgba(255,255,255,0.5)";
+                        ctx.fillRect(lx + noteW/2 + 2, yTail, 6, Math.max(0, y - yTail));
+
+                        // 头和尾
+                        if (!n.isHit) {
+                            ctx.shadowBlur = 10; ctx.shadowColor = col;
+                            ctx.fillStyle = "#fff"; ctx.fillRect(lx+5, y-15, noteW, 30);
+                            ctx.shadowBlur = 0;
+                        }
+                        // 尾巴也要画一下
+                        ctx.fillStyle = col; ctx.fillRect(lx+5, yTail-5, noteW, 10);
+                    }
+                }
+            });
+        });
+
+        // 粒子
+        particles.forEach(p => { 
+            ctx.globalAlpha = p.life; ctx.fillStyle = p.col; 
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill(); 
+        });
+        ctx.globalAlpha = 1.0;
+
+        // UI
+        if(combo > 0) {
+            ctx.fillStyle = "#fff"; ctx.font = "italic 900 50px Arial"; 
+            ctx.textAlign = "center"; ctx.shadowBlur = 10; ctx.shadowColor = "#00BFFF";
+            ctx.fillText(combo, w/2, h*0.3);
+            ctx.font = "bold 20px Arial"; ctx.shadowBlur = 0;
+            ctx.fillText("COMBO", w/2, h*0.3 + 30);
+        }
+        
+        ctx.textAlign = "right"; ctx.fillStyle = "white"; ctx.font = "bold 24px monospace"; 
+        ctx.fillText(rawScore, w-20, 40);
+
+        // 判定动画 (PERFECT/GOOD/MISS)
+        if (judgeAnim.life > 0) {
+            ctx.save();
+            ctx.translate(w/2, h*0.5);
+            ctx.scale(judgeAnim.scale, judgeAnim.scale);
+            ctx.globalAlpha = judgeAnim.life;
+            ctx.fillStyle = judgeAnim.color;
+            ctx.textAlign = "center";
+            ctx.font = "900 40px Arial Black";
+            ctx.shadowBlur = 20; ctx.shadowColor = judgeAnim.color;
+            ctx.fillText(judgeAnim.text, 0, 0);
+            ctx.restore();
+        }
+    }
+
+    // --- 输入判定 ---
+    function input(x, y, isDown) {
+        const w = canvas.width;
+        const trackW = w * 0.85;
+        const trackX = (w - trackW) / 2;
+        
+        if (x < trackX || x > trackX + trackW) return;
+        
+        const colW = trackW / 4;
+        const lane = Math.floor((x - trackX) / colW);
+        if (lane < 0 || lane > 3) return;
+
+        if(isDown) lanePress[lane] = 1;
+        const t = audioCtx.currentTime;
+        
+        if (isDown) {
+            const n = lanes[lane].find(item => !item.isHit && !item.isMiss && !item.isHolding && Math.abs(item.targetTime - t) < 0.25);
+            if (n) {
+                const diff = Math.abs(n.targetTime - t);
+                let score = 100;
+                let txt = "GOOD"; let col = "#00BFFF";
+                if (diff < 0.08) { score = 300; txt = "PERFECT"; col = "#FFD700"; }
+                
+                if (n.type === 'short') {
+                    n.isHit = true; rawScore += score; spawnExplosion(lane);
+                    triggerJudge(txt, col);
+                } else {
+                    n.isHolding = true; spawnExplosion(lane);
+                    triggerJudge(txt, col); // 长按开始也给个判定
+                }
+                combo++;
+            }
+        } else {
+            const h = lanes[lane].find(item => item.type==='long' && item.isHolding);
+            if(h) {
+                if(audioCtx.currentTime < h.endTime - 0.3) { 
+                    h.isMiss=true; combo=0; 
+                    triggerJudge("MISS", "#ff4d4d");
+                }
+                h.isHolding=false;
+            }
+        }
+    }
+    
+    function triggerJudge(text, color) {
+        judgeAnim = { text: text, color: color, life: 1.0, scale: 1.0 };
+    }
+
+    function spawnExplosion(lane, isHold = false) {
+        const w = canvas.width;
+        const trackW = w * 0.85;
+        const trackX = (w - trackW) / 2;
+        const colW = trackW / 4;
+        const cx = trackX + lane * colW + colW/2;
+        const cy = canvas.height * 0.85;
+
+        const count = isHold ? 3 : 15;
+        for(let k=0; k<count; k++) {
+            particles.push({
+                x: cx, y: cy, 
+                vx: (Math.random()-0.5)*15, vy: -(Math.random()*10+5), 
+                life: 1, col: GAME_CONFIG.colors[lane], size: Math.random()*6+3
+            });
+        }
+    }
+
+    canvas.addEventListener('touchstart', e => { 
+        e.preventDefault(); 
+        for(let i=0; i<e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            input(t.clientX, t.clientY, true);
+        }
+    }, {passive:false});
+    
+    canvas.addEventListener('touchend', e => { 
+        e.preventDefault(); 
+        for(let i=0; i<e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            input(t.clientX, t.clientY, false);
+        }
+    });
+
+    function pauseGame(){ if(gameState==='playing'){gameState='paused'; audioCtx.suspend(); document.getElementById('pause-menu').style.display='flex';}}
+    function resumeGame(){ if(gameState==='paused'){gameState='playing'; audioCtx.resume(); document.getElementById('pause-menu').style.display='none'; requestAnimationFrame(loop);}}
+    function retryGame(){ document.getElementById('pause-menu').style.display='none'; document.getElementById('result-screen').style.display='none'; initAudioAndPlay(); }
+    function exitToMenu(){ location.reload(); }
+    function finishGame(){ document.getElementById('result-screen').style.display='flex'; document.getElementById('final-score').innerText=rawScore; document.getElementById('pause-btn').style.display='none'; }
+
+</script>
+</body>
+</html>
